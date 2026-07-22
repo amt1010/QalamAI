@@ -1,0 +1,78 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test / coverage / type caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# --- Secrets & local config ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# --- Flutter / Dart ---
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/android/.gradle/
+mobile/android/local.properties
+*.iml
+
+# --- Datasets & models ---
+# Data and weights are versioned out-of-band (see DATASET_MANIFEST.md,
+# MODEL_REGISTRY.md). Only manifests and scripts belong in git.
+datasets/raw/
+datasets/clean/
+datasets/augmented/
+datasets/validated/
+datasets/benchmark/
+datasets/production/
+!datasets/**/.gitkeep
+!datasets/**/*.md
+!datasets/**/*.yaml
+!datasets/**/*.json
+models/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.tflite
+*.gguf
+
+# --- Benchmarks & experiment outputs ---
+artifacts/
+runs/
+mlruns/
+*.log
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
