@@ -141,6 +141,96 @@ version.
 
 ---
 
+### 2026-07-23 · HKG store selection — and a corrected assumption
+
+**Question.** Which store for the Heritage Knowledge Graph: labelled property
+graph, RDF/SPARQL, or relational + pgvector?
+
+**Findings.** The previous framing of this question — written by me in the first
+draft of `KNOWLEDGE_GRAPH_SCHEMA.md` — listed relational last and described it
+as "awkward for deep traversal". Formalizing the ten competency questions and
+measuring what each actually requires showed that framing to be wrong:
+
+- **Maximum traversal depth is 3**, and every path is schema-known.
+- **Not one of the ten questions requires variable-depth traversal or a graph
+  algorithm.** Bounded, known-shape traversals are joins.
+- **CQ9 ("show similar inscriptions") is not a graph query at all** — it is
+  vector similarity, and it is one of the platform's most distinctive
+  capabilities.
+- Inscription matching needs three tiers — exact fold, fuzzy string, embedding
+  similarity. A graph store natively serves the first two and none of the third.
+
+So a graph database would have been selected for traversal the platform does not
+perform, while requiring a second system for the search it does perform.
+
+Separately: reified claims, required for representing scholarly disagreement,
+are more natural relationally than in either alternative. In RDF they need
+reification or RDF-star; in a property graph, competing claims require parallel
+edges or reified nodes anyway — abandoning the graph model in all but name.
+
+**Decision.** **Rejected: Neo4j / property graph** (traversal analysis does not
+support it; separate vector store required; Community licensing constraints).
+**Rejected: RDF/SPARQL** — a close second, and its named-graph provenance model
+is genuinely principled, but its decisive advantage is interoperability, and the
+platform is self-contained. **Accepted: PostgreSQL + pgvector + pg_trgm.** See
+ADR-0009.
+
+**Follow-up.** The decision is reversible at bounded cost — the reified claim
+model is a superset of an attributed edge, and access is confined to one
+adapter. Apache AGE is worth evaluating specifically if the variable-depth
+trigger fires. **Revisit immediately if the self-contained decision reverses.**
+
+---
+
+### 2026-07-23 · CIDOC CRM
+
+**Question.** Should the HKG be built on CIDOC CRM (ISO 21127)?
+
+**Findings.** CIDOC CRM's central value is a *shared* vocabulary for exchange
+between institutions. Its complexity is deliberate and earned at museum scale:
+"a monument was built in 1632" requires an `E12 Production` event, `P108 has
+produced`, `P4 has time-span`, an `E52 Time-Span`, and `P82 at some time
+within`. Without a federation requirement, that cost buys little.
+
+Several of its modelling insights are nonetheless correct and worth taking:
+event-centric modelling of construction and conservation; separating a
+conceptual work from its physical carriers (`E73` / `E24`), which is
+independent prior art for our `InscriptionText` / `InscriptionInstance` split;
+time-spans as first-class imprecise objects; attribution as an event with an
+actor.
+
+**Decision.** **Rejected as the schema. Accepted as a source of modelling
+insight**, with a maintained mapping table for future export. See ADR-0010.
+
+**Follow-up.** Keep the mapping current as the schema evolves — cheap
+incrementally, very expensive to reconstruct later.
+
+---
+
+### 2026-07-23 · Representing scholarly disagreement
+
+**Question.** How should the schema represent contested attributions?
+
+**Findings.** Edge properties can hold one answer with a confidence caveat. They
+cannot hold "Source A says X, Source B says Y, and the field has not settled
+it". Representing that requires either parallel edges or reified nodes.
+
+This matters more than it first appears: presenting a live scholarly dispute as
+settled fact is a failure mode that survives every check ADR-0004 and ADR-0005
+impose, because each individual statement still traces to a genuine citation.
+
+**Decision.** **Accepted: reified claims** with `source` NOT NULL, no unique
+constraint on `(subject, predicate)`, and retrieval that groups competing claims
+into a `ClaimSet` flagged consensus / disputed / weak. See ADR-0011.
+
+**Follow-up.** **Consensus scoring is unsolved and blocking.** A naive
+highest-confidence-wins rule silently resolves disputes — the exact failure the
+model exists to prevent. Source weighting and dispute thresholds are questions
+Q4 and Q5 in `EXPERT_REVIEW_BRIEF.md` and must be answered before
+implementation.
+
+---
+
 ## Open research questions
 
 Not yet investigated. Listed so they are not forgotten.
@@ -150,17 +240,22 @@ Not yet investigated. Listed so they are not forgotten.
 | 1 | What benchmark data exists for Arabic monumental epigraphy OCR? Does a public set exist, or must one be built? | M3 — this is the critical path | **highest** |
 | 2 | How do scene-text recognition methods transfer to carved relief with no colour contrast? | M3 | high |
 | 3 | Which architectures suit Arabic diacritic restoration, and what supervision do they need? | M4 | medium |
-| 4 | Labelled property graph vs. RDF/SPARQL vs. relational+pgvector for the HKG? Near-irreversible once data is loaded. | M5 | **highest** |
-| 5 | How should the HKG represent *scholarly disagreement* — contested attribution, dating, provenance — without collapsing it into one confident answer? | M5 | **highest** |
+| 4 | ~~Store selection for the HKG~~ | — | **answered** 2026-07-23 → ADR-0009 |
+| 5 | ~~How to represent scholarly disagreement~~ | — | **answered** 2026-07-23 → ADR-0011 |
+| 5a | How should consensus vs. dispute be *scored* — source weighting and thresholds? Blocking for ADR-0011. | M5 | **highest** |
 | 6 | Which heritage data sources are authoritative *and* licensable for this use? | M5 | **highest** |
 | 7 | How is generated narrative verified, given ADR-0005 grounds claims but not the prose connecting them? | M6 | high |
 | 8 | Offline, hosted, or hybrid translation — what are the accuracy, latency, and data-residency trade-offs for culturally sensitive material? | M4 | medium |
 | 9 | Do monumental Arabic inscriptions need script-aware detection, or does generic text detection suffice? | M2 | medium |
 | 10 | What annotation schema should inscription datasets use? (Study Calliar's as prior art.) | M3 | high |
 
-Questions 1, 4, 5, and 6 are sourcing and research problems rather than
+Questions 1, 5a, and 6 are sourcing and expert-judgement problems rather than
 engineering ones, and are likely to dominate their milestones. They should be
 started well before the milestone that formally depends on them.
+
+Questions 1, 5a, and 6 are all posed to a domain expert in
+`EXPERT_REVIEW_BRIEF.md` (as Q13, Q4–Q5, and Q13 respectively). Finding a
+reviewer is currently the highest-leverage unblocking action available.
 
 ---
 

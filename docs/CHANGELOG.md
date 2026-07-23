@@ -9,7 +9,40 @@ While the platform is pre-1.0, breaking changes may occur in minor releases.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added — M5 Heritage Knowledge Graph design (2026-07-23)
+
+Design only. **No implementation**, pending domain expert review.
+
+- `KNOWLEDGE_GRAPH_SCHEMA.md` rewritten from a list of open questions into a
+  design: ten formalized competency questions, entity model, claim model,
+  physical schema, and three-tier inscription matching
+- `EXPERT_REVIEW_BRIEF.md` — fourteen questions for a domain expert, written
+  without technical jargon
+- **ADR-0009** — PostgreSQL + pgvector + pg_trgm as the HKG store
+- **ADR-0010** — borrow from CIDOC CRM without adopting it
+- **ADR-0011** — reified claims instead of attributed relationships
+
+### Changed
+
+- M5 pulled forward ahead of M2. M2 is well-understood engineering; M5 holds the
+  project's only near-irreversible decision and its hardest modelling problem
+- `InscriptionText` separated from `InscriptionInstance` — the Basmala is one
+  text with thousands of physical carvings, and conflating them makes "where
+  else does this inscription appear?" unanswerable
+- Research questions #4 and #5 closed; #5a (consensus scoring) opened in their
+  place and flagged as blocking
+
+### Notable
+
+The design **corrected an assumption in its own first draft.** That draft framed
+store selection as a three-way choice and described the relational option as
+"awkward for deep traversal". Formalizing the competency questions showed
+maximum traversal depth is 3, every path is schema-known, and none of the ten
+questions needs a graph algorithm — while the most distinctive one ("show
+similar inscriptions") is vector similarity, not a graph query at all. A graph
+database would have been selected for traversal the platform never performs.
+
+Recorded in `RESEARCH_LOG.md` 2026-07-23 and ADR-0009.
 
 ---
 

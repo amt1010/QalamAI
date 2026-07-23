@@ -63,6 +63,26 @@ itself unavailable. This is the honest state and is visible at `/readiness`.
 
 ---
 
+---
+
+### ⚠️ Resequencing, 2026-07-23
+
+**M5 (Heritage Knowledge Graph) has been pulled forward ahead of M2.**
+
+Reason: M2 is well-understood engineering whose shape does not change with time.
+M5 contains the project's only near-irreversible decision — store selection —
+and its hardest modelling problem, representing contested scholarship. Doing
+M2 first would have meant discovering the schema's flaws several months later
+with ingestion already built on it.
+
+**M5 design is now complete and awaiting expert review** (see below). M2 resumes
+once that review is either returned or explicitly deferred.
+
+Milestone numbering is unchanged to keep existing cross-references valid; only
+execution order moved.
+
+---
+
 ### M2 — Image ingestion and preprocessing
 
 **Objective.** Turn `image_url` from an accepted string into a fetched,
@@ -129,30 +149,56 @@ sensitive.
 
 ---
 
-### M5 — Heritage Knowledge Graph
+### M5 — Heritage Knowledge Graph · **design complete, blocked on review**
 
 **Objective.** The platform's highest-risk and highest-value subsystem.
 
-**Scope.** Entity and relationship model; store selection (labelled property
-graph vs. RDF/SPARQL vs. relational + pgvector) as an ADR; provenance,
-confidence, and citation on every relationship; ingestion pipeline; query API;
-`KnowledgeGraphClient` adapter. Independently deployable per ADR-0001.
+#### Design phase ✅ complete (2026-07-23)
 
-Entities to model: monuments, inscriptions, Quranic verses, hadith, historical
-figures, dynasties, empires, cities, countries, calligraphy styles,
-calligraphers, religious themes, historical events, architectural styles,
-conservation history, academic references.
+- Ten competency questions formalized as schema acceptance criteria
+- Entity model, with `InscriptionText` separated from `InscriptionInstance`
+- Claim-centric provenance model representing contested scholarship (ADR-0011)
+- Store selected: PostgreSQL + pgvector + pg_trgm (ADR-0009)
+- CIDOC CRM evaluated: borrowed, not adopted (ADR-0010)
+- Three-tier inscription matching designed
+- Revised `KnowledgeGraphClient` interface proposed
+- `EXPERT_REVIEW_BRIEF.md` written
 
-**Risks.**
+The design corrected an assumption in its own first draft: the competency
+questions are bounded-depth and schema-known, so a graph database would have
+been chosen for traversal the platform never performs. Recorded in
+`RESEARCH_LOG.md` 2026-07-23.
+
+#### 🚧 Blocking gate — domain expert review
+
+**No implementation until `EXPERT_REVIEW_BRIEF.md` is answered or the review is
+explicitly deferred as an accepted risk.** Fourteen questions, of which three
+are load-bearing:
+
+- **Q4/Q5 — source weighting and the dispute threshold.** Consensus scoring is
+  unsolved. A naive highest-confidence-wins rule silently resolves disputes,
+  which is precisely the failure ADR-0011 exists to prevent. **This blocks
+  implementation, not just data loading.**
+- **Q1/Q2 — inscription identity.** Whether the text/instance split matches how
+  epigraphers reason, and when a damaged reading is "the same inscription".
+- **Q13 — sources.** Which corpora are authoritative and licensable, and whether
+  a research-usable photographic dataset exists at all. This is the largest
+  unknown in the entire project.
+
+#### Implementation phase (after review)
+
+Schema, ingestion pipeline, query API, `KnowledgeGraphClient` adapter,
+`ClaimSet` domain type. Independently deployable per ADR-0001.
+
+**Remaining risks.**
 - Sourcing authoritative, licensable heritage data is a research and legal
-  problem, not an engineering one. It is likely to dominate this milestone.
-- Contested history: attribution, dating, and provenance are frequently disputed
-  in the literature. The schema must represent *disagreement between sources*,
-  not collapse it into a single confident answer.
-- Store selection is close to irreversible once data is loaded.
+  problem, not an engineering one, and will likely dominate this milestone.
+- Consensus scoring may prove to have no defensible automated answer, in which
+  case disputed claims must always surface as disputed rather than being
+  resolved — a product consequence, not only a technical one.
 
-**Definition of Done additions.** Schema review with a domain expert; a
-documented answer for how conflicting scholarly claims are represented.
+**Definition of Done additions.** Expert review returned and incorporated; a
+documented, expert-validated rule for consensus vs. dispute.
 
 ---
 
@@ -243,6 +289,7 @@ source identification for M5 are the two things most worth starting early.
 | `DATASET_MANIFEST.md` | Dataset provenance, licensing, versions, splits |
 | `MODEL_REGISTRY.md` | Model versions, training runs, metrics, lineage |
 | `KNOWLEDGE_GRAPH_SCHEMA.md` | HKG entities, relationships, provenance model |
+| `EXPERT_REVIEW_BRIEF.md` | Questions for domain expert review of the HKG schema |
 | `API_SPECIFICATION.md` | HTTP contract |
 | `SECURITY.md` | Threat model, controls, open risks |
 | `PERFORMANCE.md` | Benchmarks, budgets, measurements |

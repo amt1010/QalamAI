@@ -219,19 +219,39 @@ Full detail in [`API_SPECIFICATION.md`](API_SPECIFICATION.md).
 
 ---
 
-## 8. Heritage Knowledge Graph **[planned]**
+## 8. Heritage Knowledge Graph — **designed, not implemented**
 
 The HKG is a first-class subsystem with its own schema, API, tests, and
-deployment. Design work is scheduled for M5 and is the platform's highest-risk
-component.
+deployment, and it is the platform's highest-risk component.
 
 Its seam already exists: the `KnowledgeGraphClient` port. The domain depends on
-that port and never on a graph driver, so extracting the HKG into its own
+that port and never on a database driver, so extracting the HKG into its own
 deployable service is an adapter swap plus a deployment change — no domain
-change. See [`KNOWLEDGE_GRAPH_SCHEMA.md`](KNOWLEDGE_GRAPH_SCHEMA.md) for the
-open questions, which include the store selection (labelled property graph vs.
-RDF/SPARQL vs. relational + pgvector) and how provenance, confidence, and
-citation are modelled on every relationship.
+change.
+
+**Design complete (2026-07-23), implementation blocked on domain expert
+review.** Full detail in
+[`KNOWLEDGE_GRAPH_SCHEMA.md`](KNOWLEDGE_GRAPH_SCHEMA.md). The load-bearing
+decisions:
+
+- **Store: PostgreSQL + pgvector + pg_trgm** (ADR-0009). Not a graph database —
+  the ten competency questions turn out to be bounded-depth and schema-known
+  (max depth 3), while the most distinctive of them is vector similarity rather
+  than traversal.
+- **Relationships are reified `Claim`s, not attributed edges** (ADR-0011), so
+  the schema can represent *scholarly disagreement* without resolving it. An
+  edge with a confidence property holds one answer with a caveat; it cannot
+  hold "Source A says X, Source B says Y, and the field has not settled it".
+- **`InscriptionText` is separate from `InscriptionInstance`** — one text,
+  thousands of physical carvings.
+- **CIDOC CRM borrowed, not adopted** (ADR-0010), with a mapping table
+  maintained for future export.
+
+The blocking gate is consensus scoring: deciding when competing claims
+constitute a genuine dispute versus a settled view with a minority position.
+A naive highest-confidence-wins rule would silently resolve disputes, which is
+the failure the whole model exists to prevent. Posed as Q4/Q5 in
+[`EXPERT_REVIEW_BRIEF.md`](EXPERT_REVIEW_BRIEF.md).
 
 ---
 
@@ -279,4 +299,4 @@ Recorded rather than deferred silently:
 | Arabic folding rules not reviewed by an epigrapher | Matching recall/precision unvalidated | before corpus matching (ADR-0008) |
 | No benchmarks | Performance claims unfounded | M3 (`PERFORMANCE.md`) |
 | Mobile app is a shell | No client architecture | M7 |
-| HKG entirely undesigned | Highest-risk subsystem | M5 |
+| HKG designed but unreviewed and unimplemented | Consensus scoring unsolved; schema unvalidated by a domain expert | M5, blocked on review |

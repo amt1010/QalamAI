@@ -108,7 +108,8 @@ so an unsupported claim has no representation for any generator to emit.
 | [API_SPECIFICATION.md](docs/API_SPECIFICATION.md) | HTTP contract |
 | [TEST_PLAN.md](docs/TEST_PLAN.md) | Test strategy and the properties that matter |
 | [RESEARCH_LOG.md](docs/RESEARCH_LOG.md) | Technology evaluations and open research questions |
-| [KNOWLEDGE_GRAPH_SCHEMA.md](docs/KNOWLEDGE_GRAPH_SCHEMA.md) | HKG requirements and open design questions |
+| [KNOWLEDGE_GRAPH_SCHEMA.md](docs/KNOWLEDGE_GRAPH_SCHEMA.md) | HKG schema design — awaiting expert review |
+| [EXPERT_REVIEW_BRIEF.md](docs/EXPERT_REVIEW_BRIEF.md) | Questions for a domain expert in Islamic epigraphy |
 | [DATASET_MANIFEST.md](docs/DATASET_MANIFEST.md) | Dataset provenance and licensing policy |
 | [MODEL_REGISTRY.md](docs/MODEL_REGISTRY.md) | Model versions, metrics, and promotion policy |
 | [SECURITY.md](docs/SECURITY.md) | Threat model and current posture |
@@ -117,11 +118,23 @@ so an unsupported claim has no representation for any generator to emit.
 
 ---
 
-## Next milestone — M2: image ingestion and preprocessing
+## Current work — M5: Heritage Knowledge Graph
 
-Turns `image_url` from an accepted string into a fetched, validated, enhanced
-image. **Blocked on SSRF and image-payload mitigations** — see
-[SECURITY.md](docs/SECURITY.md) T1 and T2.
+Pulled ahead of M2, because M5 holds the project's only near-irreversible
+decision. **Design complete; implementation blocked on domain expert review**
+([EXPERT_REVIEW_BRIEF.md](docs/EXPERT_REVIEW_BRIEF.md)).
+
+The design's headline decision is a rejection: **the HKG is not built on a graph
+database.** Formalizing the ten competency questions showed maximum traversal
+depth is 3, every path is schema-known, and none requires a graph algorithm —
+while the most distinctive question, "show similar inscriptions", is vector
+similarity rather than traversal. PostgreSQL + pgvector serves all of it in one
+store ([ADR-0009](docs/ARCHITECTURE_DECISIONS.md#adr-0009-postgresql-with-pgvector-as-the-hkg-store)).
+
+The harder problem is representing **contested scholarship**. Relationships are
+reified claims rather than attributed edges, so the schema can hold "Source A
+says X, Source B says Y, and the field has not settled it"
+([ADR-0011](docs/ARCHITECTURE_DECISIONS.md#adr-0011-reified-claims-instead-of-attributed-relationships)).
 
 The project's critical path is not model architecture. It is data: a benchmark
 dataset for Arabic monumental epigraphy, and authoritative licensable sources

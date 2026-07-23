@@ -16,6 +16,9 @@ Status values: `Proposed` · `Accepted` · `Superseded by ADR-XXXX` · `Deprecat
 | [0006](#adr-0006-asynchronous-ports-with-threaded-cpu-bound-adapters) | Asynchronous ports with threaded CPU-bound adapters | Accepted | 2026-07-22 |
 | [0007](#adr-0007-explicit-composition-root-instead-of-a-di-framework) | Explicit composition root instead of a DI framework | Accepted | 2026-07-22 |
 | [0008](#adr-0008-conservative-canonicalization-separate-from-lossy-folding) | Conservative canonicalization separate from lossy folding | Accepted | 2026-07-22 |
+| [0009](#adr-0009-postgresql-with-pgvector-as-the-hkg-store) | PostgreSQL with pgvector as the HKG store | Proposed | 2026-07-23 |
+| [0010](#adr-0010-borrow-from-cidoc-crm-without-adopting-it) | Borrow from CIDOC CRM without adopting it | Proposed | 2026-07-23 |
+| [0011](#adr-0011-reified-claims-instead-of-attributed-relationships) | Reified claims instead of attributed relationships | Proposed | 2026-07-23 |
 
 ---
 
@@ -419,3 +422,275 @@ Epigraphers review the folding rules. The current rules are a defensible
 starting point, not a validated one — this must be reviewed with a domain
 expert before any corpus matching ships, and the outcome recorded in
 `RESEARCH_LOG.md`.
+
+---
+
+## ADR-0009: PostgreSQL with pgvector as the HKG store
+
+**Status:** Proposed · 2026-07-23 · *blocked on domain expert review before
+implementation*
+
+### Context
+
+Store selection for the Heritage Knowledge Graph is the closest thing to an
+irreversible decision in this project: once data is loaded and ingestion is
+built, migration is expensive and risky.
+
+The platform is **self-contained** — it owns its model and does not need to
+federate with institutional linked data (decision recorded 2026-07-23). That
+removes the strongest argument for RDF.
+
+The previous draft of `KNOWLEDGE_GRAPH_SCHEMA.md` — written by me — framed this
+as a three-way choice between a labelled property graph, RDF/SPARQL, and
+"relational + pgvector", with the relational option listed last and described as
+"awkward for deep traversal". That framing carried an unexamined assumption.
+
+### The assumption, examined
+
+Formalizing the ten competency questions and measuring what each actually
+requires produced a result that contradicts the framing:
+
+**Maximum traversal depth is 3. Every path is schema-known. Not one of the ten
+questions needs variable-depth traversal or a graph algorithm.**
+
+Graph databases earn their operational complexity on *unbounded* traversal —
+shortest path, community detection, "find any connection between A and B". A
+bounded, known-shape traversal of depth 3 is a join.
+
+Two further observations:
+
+- **CQ9 ("show similar inscriptions") is not a graph query at all.** It is
+  vector similarity, and it is among the platform's most distinctive
+  capabilities.
+- **Inscription matching needs three tiers in sequence** — exact key, fuzzy
+  string, embedding similarity (`KNOWLEDGE_GRAPH_SCHEMA.md` §6). A graph store
+  serves the first two; none serves the third natively.
+
+So a graph database would be chosen for traversal the platform does not perform,
+while requiring a second system for the search it does perform, plus consistency
+between them.
+
+### Decision
+
+**PostgreSQL with `pgvector` and `pg_trgm`.**
+
+- Entities as tables; relationships as reified `claim` rows (ADR-0011).
+- Bounded traversals as joins; the deepest is three.
+- All three matching tiers in one table, one index set, one round trip.
+- `jsonb` for structured historical dates, which resist a `date` column.
+
+### Consequences
+
+Positive:
+
+- One store for graph-shaped data, relational data, and vector search. No
+  cross-system consistency problem.
+- ACID transactions over claim ingestion and supersession, which matters for a
+  corpus whose sources get corrected and retracted.
+- Reified claims — the requirement that actually constrains this schema — are
+  more natural in relational than in either alternative. In RDF they need
+  reification or RDF-star; in a property graph, *competing* claims need parallel
+  edges or reified nodes anyway, at which point the graph model has been
+  abandoned in all but name.
+- Operationally ordinary: backup, replication, monitoring, and hosting are
+  solved problems. For a one-developer project this is not a small thing.
+- No new query language to learn or to hire for.
+
+Negative, stated plainly:
+
+- **If the out-of-scope questions come into scope, this is the wrong store.**
+  Calligrapher influence networks, architectural-vocabulary clustering, and
+  arbitrary path-finding between monuments are all variable-depth. They are
+  plausible research-mode features. Recursive CTEs can express them, but they
+  become painful past a few hops and are hard to optimize.
+- No graph algorithm library. Implementing PageRank or community detection over
+  SQL is possible and unpleasant.
+- Loses the "it's a real knowledge graph" signal that carries weight with some
+  academic and institutional audiences. A presentational cost, not a technical
+  one, but real if institutional partnerships are later pursued.
+
+### Revisit when
+
+- **Any competency question requiring variable-depth traversal is accepted into
+  scope.** This is the primary trigger and should be checked whenever a new
+  research-mode feature is proposed.
+- Graph algorithms (centrality, clustering, path finding) become a product
+  requirement rather than a research curiosity.
+- The interoperability decision reverses — if museum or archive federation
+  becomes a goal, revisit ADR-0010 and this ADR together.
+- Claim-table query performance degrades beyond what indexing and partitioning
+  fix at realistic corpus size.
+
+Migration path if triggered: entities and claims export cleanly to nodes and
+edges, since the reified claim model is already a superset of an attributed
+edge. Access is confined to `KnowledgeGraphClient`, so the blast radius is one
+adapter. This is bounded pain, not a rewrite — which is what makes the decision
+safe to take now.
+
+### Alternatives rejected
+
+**Labelled property graph (Neo4j, Memgraph).** The reflexive choice, rejected
+because the traversal analysis does not support it. Edge properties look like a
+natural home for provenance until competing claims are required, at which point
+parallel edges or reified nodes are needed anyway. Would additionally require a
+second system for vector search. Neo4j Community licensing (GPLv3, no RBAC,
+single database) is a further constraint for a platform intended to serve
+institutions.
+
+**RDF / SPARQL.** Its strongest argument is interoperability with heritage
+linked data and CIDOC CRM — and the platform is self-contained, so that argument
+does not apply here. Named graphs are a genuinely principled home for
+provenance, which is a real point in its favour and the main reason this is a
+close second rather than a clear third. Rejected on cost: reification for
+statement-level provenance is verbose, the ecosystem is smaller, operational
+maturity is lower, and one developer would be paying a steep learning cost for
+interoperability that is not currently wanted. **Revisit immediately if the
+interoperability decision reverses.**
+
+**Multi-model (ArangoDB) or Apache AGE.** Considered. AGE adds openCypher to
+PostgreSQL and would preserve the single-store advantage — worth revisiting
+specifically if the variable-depth trigger fires, since it may make migration
+cheaper than a move to Neo4j. Not adopted now because it adds an extension
+dependency for traversal the platform does not yet perform.
+
+---
+
+## ADR-0010: Borrow from CIDOC CRM without adopting it
+
+**Status:** Proposed · 2026-07-23
+
+### Context
+
+CIDOC CRM (ISO 21127) is the standard ontology for cultural heritage
+information. It is the product of decades of modelling experience and is the
+lingua franca for museum and archive data exchange.
+
+The question is whether the HKG should be built on it.
+
+### Decision
+
+**Do not adopt CIDOC CRM as the schema. Borrow its modelling insights, and
+maintain a documented mapping for future export.**
+
+The decisive factor is the interoperability decision (2026-07-23): the platform
+is self-contained. CIDOC CRM's central value is a *shared* vocabulary — it is
+what makes your data legible to other institutions. Without a federation
+requirement, adopting it means paying its complexity and receiving little of its
+benefit.
+
+Its complexity is not incidental. Modelling "a monument was built in 1632"
+requires an `E12 Production` event, `P108 has produced`, `P4 has time-span`, an
+`E52 Time-Span`, and `P82 at some time within`. That indirection exists for good
+reasons at museum scale, and it would meaningfully slow a one-developer project
+building its first schema.
+
+**What is borrowed:**
+
+- **Event-centric modelling.** CIDOC CRM models construction, damage, and
+  restoration as events with participants and time-spans rather than as
+  attributes of an object. `ConservationEvent` and `HistoricalEvent` follow
+  this, and it is the right shape.
+- **Separating a conceptual work from its physical carriers.** This is directly
+  the `InscriptionText` / `InscriptionInstance` split, and CIDOC CRM's
+  `E73 Information Object` / `E24 Physical Human-Made Thing` distinction is
+  prior art confirming it.
+- **Time-spans as first-class, imprecise things** rather than dates. Reflected
+  in the `jsonb` temporal representation.
+- **Attribution as an event with an actor**, which is close kin to ADR-0011's
+  reified claims.
+
+**What is maintained:** a mapping table from our entities and predicates to
+CIDOC CRM classes and properties, kept current as the schema evolves. Cheap to
+maintain incrementally; very expensive to reconstruct later.
+
+### Consequences
+
+Positive: a schema sized to the project, shaped by an ontology that has already
+made the mistakes. Export to CIDOC CRM stays possible.
+
+Negative: not natively interoperable. If an institutional partnership arrives,
+an export layer must be built — the mapping table makes that a project rather
+than an excavation. Some academic credibility cost from not using the standard.
+
+### Revisit when
+
+The interoperability decision reverses, an institutional partner requires CIDOC
+CRM exchange, or publishing to a heritage linked-data ecosystem becomes a goal.
+Revisit alongside ADR-0009.
+
+---
+
+## ADR-0011: Reified claims instead of attributed relationships
+
+**Status:** Proposed · 2026-07-23
+
+### Context
+
+The platform must never present a contested historical attribution as settled
+fact. This is a sharper problem than hallucination, and less obvious: every
+individual statement can trace to a genuine citation while the *presentation*
+still misrepresents the state of scholarship.
+
+The Taj Mahal is the standard illustration. Its principal calligrapher is
+attributed to Amanat Khan on the basis of a signature — well supported. Its
+chief architect is disputed across sources with no consensus. A system that
+renders both as a plain fact with a footnote has misled the reader about the
+second.
+
+### Decision
+
+Relationships are not edges with attributes. Every assertion is a first-class
+`Claim` row:
+
+```
+Claim(subject, predicate, object, source, confidence, asserted_by,
+      recorded_at, status, supersedes)
+```
+
+with these invariants:
+
+1. `source_id` is `NOT NULL` — a claim without a source cannot exist.
+2. `confidence` is `NOT NULL`, constrained to `[0, 1]`.
+3. **No unique constraint on `(subject, predicate)`.** Competing claims are
+   permitted and expected. That absence is the design, not an oversight.
+4. Claims are never deleted, only superseded or retracted.
+
+Retrieval groups claims by predicate into a `ClaimSet` flagged `consensus`,
+`disputed`, or `weak`. The API surfaces disputes as disputes.
+
+### Why this rather than edge properties
+
+An edge with a `confidence` property holds one answer with a caveat. It cannot
+hold "Source A says X, Source B says Y, and the field has not settled it" —
+that requires either parallel edges or reified nodes, which is this decision
+arrived at by a longer route.
+
+Note this is the database-level counterpart of `HeritageClaim` refusing
+construction without `Evidence` (ADR-0005). The same guarantee is enforced at
+both ends: `NOT NULL` in the store, a constructor invariant in the domain.
+
+### Consequences
+
+Positive: scholarly disagreement is representable and cannot be silently
+resolved. Full audit trail. Retracted sources can be traced to every dependent
+claim. Provenance is structural rather than a convention.
+
+Negative:
+
+- Queries are less direct — every relationship traversal goes through the claim
+  table, and CQ10 fans out into several claim lookups. Indexed on
+  `(subject_type, subject_id, predicate) WHERE status = 'active'`; batched by
+  `monument_context()`.
+- **Consensus scoring is a genuine unsolved problem.** A naive
+  highest-confidence-wins rule silently resolves disputes, which is exactly the
+  failure this ADR exists to prevent. Thresholds and source weighting are open
+  questions for domain expert review, and this ADR is not safe to implement
+  until they are answered.
+- Ingestion is more demanding: every fact needs a source before it can be
+  stored. This is intended.
+
+### Revisit when
+
+Never for the invariants. The consensus/dispute *scoring* will change after
+expert review — that is expected, and the review outcome should be recorded here
+and in `RESEARCH_LOG.md`.
